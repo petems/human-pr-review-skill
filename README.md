@@ -44,21 +44,77 @@ sentinel exists.
 
 ## Installation
 
-### Installing with Skilz (Recommended)
+### Claude Code Plugin Marketplace
 
-The easiest way to install this skill is using the [Skilz Universal Installer](https://github.com/SpillwaveSolutions/skilz):
+Use this path for Claude Code. The repo should be registered as a Claude Code
+plugin marketplace, then installed with the namespaced `plugin@marketplace`
+syntax:
 
 ```bash
-# Install Skilz (one-time setup)
-curl -fsSL https://raw.githubusercontent.com/SpillwaveSolutions/skilz/main/install.sh | bash
+# In Claude Code
+/plugin marketplace add petems/human-pr-review-skill
 
-# Install this skill
-skilz install SpillwaveSolutions_pr-reviewer-skill/pr-reviewer
+# Install the plugin from that marketplace
+/plugin install human-pr-reviewer@petems-human-pr-review
 ```
 
-View on the Skilz Marketplace: [pr-reviewer](https://skillzwave.ai/skill/SpillwaveSolutions__pr-reviewer-skill__pr-reviewer__SKILL/)
+The repository includes the marketplace and plugin metadata files required by
+Claude Code:
 
-### Manual Installation
+```text
+├── .claude-plugin/
+│   ├── marketplace.json
+│   └── plugin.json
+├── SKILL.md
+├── references/
+├── scripts/
+└── README.md
+```
+
+Minimal marketplace shape:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "petems-human-pr-review",
+  "version": "1.0.0",
+  "description": "Human-in-the-loop PR review skill for Claude Code",
+  "owner": {
+    "name": "Peter Souter"
+  },
+  "plugins": [
+    {
+      "name": "human-pr-reviewer",
+      "description": "Drafts GitHub PR reviews while requiring a human /show step before posting.",
+      "version": "2.0.0",
+      "source": ".",
+      "category": "productivity"
+    }
+  ]
+}
+```
+
+Use `.claude-plugin` with a hyphen. Do not use `.claude_plugin`.
+
+### Other Agents with `npx skills add`
+
+Use this path for Codex, Cursor, and other agents that support Agent Skills:
+
+```bash
+npx skills add petems/human-pr-review-skill
+```
+
+You can also install from the GitHub URL:
+
+```bash
+npx skills add https://github.com/petems/human-pr-review-skill
+```
+
+This keeps the skill install agent-agnostic: the installer finds the skill,
+places it in the right location for the selected agent, and preserves the
+bundled `references/` and `scripts/` resources.
+
+### Requirements
 
 1. **Install GitHub CLI** (if not already installed):
    ```bash
@@ -77,17 +133,24 @@ View on the Skilz Marketplace: [pr-reviewer](https://skillzwave.ai/skill/Spillwa
    gh auth login
    ```
 
-3. **Clone this skill** to your Claude Code skills directory:
+3. **Install Python dependencies** (if needed):
    ```bash
-   cd ~/.claude/skills
-   git clone https://github.com/SpillwaveSolutions/pr-reviewer-skill.git pr-reviewer
-   ```
-
-4. **Install Python dependencies** (if needed):
-   ```bash
-   cd pr-reviewer
    pip install requests  # Only needed for add_inline_comment.py
    ```
+
+### Packaging Notes
+
+Keep install metadata separate from skill instructions:
+
+- `.claude-plugin/marketplace.json` belongs at the marketplace root.
+- `.claude-plugin/plugin.json` belongs at the plugin root.
+- `SKILL.md` is the skill entrypoint for this single-skill repository.
+- `references/` is for detailed material the agent should read only when
+  needed, such as review criteria, scenarios, and troubleshooting.
+- `scripts/` is for deterministic helper code that the skill can run without
+  re-generating it.
+- Keep `SKILL.md` focused on the workflow and link to `references/` for longer
+  supporting material.
 
 ## Quick Start
 

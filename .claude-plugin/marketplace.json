@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "petems-human-pr-review",
+  "version": "1.0.0",
+  "description": "Human-in-the-loop PR review skill for Claude Code",
+  "owner": {
+    "name": "Peter Souter"
+  },
+  "plugins": [
+    {
+      "name": "human-pr-reviewer",
+      "description": "Drafts GitHub PR reviews while requiring a human /show step before posting.",
+      "version": "2.0.0",
+      "source": ".",
+      "category": "productivity"
+    }
+  ]
+}
