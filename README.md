@@ -58,27 +58,17 @@ syntax:
 /plugin install human-pr-reviewer@petems-human-pr-review
 ```
 
-The marketplace should expose a `.claude-plugin/marketplace.json` file, and the
-plugin itself should include `.claude-plugin/plugin.json`. Claude Code plugin
-components should sit at the plugin root:
+The repository includes the marketplace and plugin metadata files required by
+Claude Code:
 
 ```text
-human-pr-reviewer/
 ├── .claude-plugin/
+│   ├── marketplace.json
 │   └── plugin.json
-├── skills/
-│   └── human-pr-reviewer/
-│       ├── SKILL.md
-│       ├── references/
-│       └── scripts/
+├── SKILL.md
+├── references/
+├── scripts/
 └── README.md
-```
-
-For a marketplace repository, keep the marketplace file at:
-
-```text
-.claude-plugin/
-└── marketplace.json
 ```
 
 Minimal marketplace shape:
@@ -97,7 +87,7 @@ Minimal marketplace shape:
       "name": "human-pr-reviewer",
       "description": "Drafts GitHub PR reviews while requiring a human /show step before posting.",
       "version": "2.0.0",
-      "source": "./human-pr-reviewer",
+      "source": ".",
       "category": "productivity"
     }
   ]
@@ -154,7 +144,7 @@ Keep install metadata separate from skill instructions:
 
 - `.claude-plugin/marketplace.json` belongs at the marketplace root.
 - `.claude-plugin/plugin.json` belongs at the plugin root.
-- `skills/<skill-name>/SKILL.md` is the Claude Code plugin skill entrypoint.
+- `SKILL.md` is the skill entrypoint for this single-skill repository.
 - `references/` is for detailed material the agent should read only when
   needed, such as review criteria, scenarios, and troubleshooting.
 - `scripts/` is for deterministic helper code that the skill can run without

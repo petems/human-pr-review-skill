@@ -1,0 +1,16 @@
+{
+  "name": "human-pr-reviewer",
+  "version": "2.0.0",
+  "description": "Draft GitHub PR reviews while requiring a human /show step before posting.",
+  "author": {
+    "name": "Peter Souter"
+  },
+  "repository": "https://github.com/petems/human-pr-review-skill",
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "code-review",
+    "pull-request",
+    "human-in-the-loop"
+  ]
+}
