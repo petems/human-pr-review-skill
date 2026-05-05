@@ -8,18 +8,19 @@ Creates three review files:
 - pr/inline.md: List of inline comments with code snippets
 
 Usage:
-    python generate_review_files.py <pr_review_dir> --findings <findings_json>
+    python generate_review_files.py <pr_review_dir> --findings <findings_json> [--project-dir <project_dir>]
 
 Example:
-    python generate_review_files.py /tmp/PRs/myrepo/123 --findings findings.json
+    python generate_review_files.py /tmp/PRs/myrepo/123 --findings findings.json --project-dir /path/to/project
 """
 
 import argparse
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional, Tuple
 
 
 def create_pr_directory(pr_review_dir: Path) -> Path:
@@ -333,97 +334,248 @@ def generate_inline_comments_file(findings: Dict[str, Any]) -> str:
     return content
 
 
-def generate_claude_commands(pr_review_dir: Path, metadata: Dict[str, Any]):
-    """Generate .claude directory with custom slash commands."""
+def resolve_repo(metadata: Dict[str, Any]) -> Tuple[str, str]:
+    """Resolve owner and repo from explicit fields or an owner/repo repository."""
+    owner = metadata.get('owner')
+    repo = metadata.get('repo')
+    repository = metadata.get('repository')
 
-    claude_dir = pr_review_dir / ".claude" / "commands"
-    claude_dir.mkdir(parents=True, exist_ok=True)
+    if (not owner or not repo) and isinstance(repository, str) and "/" in repository:
+        resolved_owner, resolved_repo = repository.split("/", 1)
+        owner = owner or resolved_owner
+        repo = repo or resolved_repo
 
-    owner = metadata.get('owner', 'owner')
-    repo = metadata.get('repo', 'repo')
-    pr_number = metadata.get('number', '123')
+    return str(owner or 'owner'), str(repo or 'repo')
+
+
+def build_claude_command_contents(
+    pr_review_dir: Path,
+    metadata: Dict[str, Any],
+    show_command: str,
+    send_command: str,
+    send_decline_command: str,
+) -> Dict[str, str]:
+    """Build slash command content using absolute review file paths."""
+    owner, repo = resolve_repo(metadata)
+    pr_number = str(metadata.get('number', '123'))
+
+    review_file = pr_review_dir / "pr" / "review.md"
+    human_file = pr_review_dir / "pr" / "human.md"
+    inline_file = pr_review_dir / "pr" / "inline.md"
+    sentinel_file = pr_review_dir / ".human_reviewed"
+
+    pr_review_dir_q = shlex.quote(str(pr_review_dir))
+    review_file_q = shlex.quote(str(review_file))
+    human_file_q = shlex.quote(str(human_file))
+    inline_file_q = shlex.quote(str(inline_file))
+    sentinel_file_q = shlex.quote(str(sentinel_file))
 
     gate_refusal = (
-        "This review has not been opened in your IDE. Run /show first, "
-        "read pr/review.md and pr/human.md, edit anything that doesn't sound "
+        f"This review has not been opened in your IDE. Run {show_command} first, "
+        f"read {review_file} and {human_file}, edit anything that doesn't sound "
         "like you, then come back. The byline on this review is going to say "
         "it's from you - make sure it actually is."
     )
 
-    # /send command - approve and post human.md (gated on /show sentinel)
     send_cmd = f"""Post the human-friendly review and approve the PR.
 
 This command is gated: it will refuse to run unless the reviewer has opened the
-review in their IDE via /show. The point is to make sure a human actually looked
-at the review before it gets posted under their name.
+review in their IDE via {show_command}. The point is to make sure a human
+actually looked at the review before it gets posted under their name.
 
 Steps:
-1. Check that `.human_reviewed` exists in the current directory.
+1. Check that `{sentinel_file}` exists.
+   - You can verify this with `test -f {sentinel_file_q}`.
    - If it does NOT exist, STOP. Tell the user verbatim:
      "{gate_refusal}"
      Do not proceed to any of the steps below.
-2. Read the file `pr/human.md` in the current directory.
+2. Read the file `{human_file}`.
 3. Post the review content as a PR comment using:
-   `gh pr comment {pr_number} --repo {owner}/{repo} --body-file pr/human.md`
+   `gh pr comment {pr_number} --repo {owner}/{repo} --body-file {human_file_q}`
 4. Approve the PR using:
    `gh pr review {pr_number} --repo {owner}/{repo} --approve`
 5. Confirm to the user that the review was posted and PR was approved.
 """
 
-    with open(claude_dir / "send.md", 'w') as f:
-        f.write(send_cmd)
-
-    # /send-decline command - request changes and post human.md (gated on /show sentinel)
     send_decline_cmd = f"""Post the human-friendly review and request changes on the PR.
 
 This command is gated: it will refuse to run unless the reviewer has opened the
-review in their IDE via /show. The point is to make sure a human actually looked
-at the review before it gets posted under their name.
+review in their IDE via {show_command}. The point is to make sure a human
+actually looked at the review before it gets posted under their name.
 
 Steps:
-1. Check that `.human_reviewed` exists in the current directory.
+1. Check that `{sentinel_file}` exists.
+   - You can verify this with `test -f {sentinel_file_q}`.
    - If it does NOT exist, STOP. Tell the user verbatim:
      "{gate_refusal}"
      Do not proceed to any of the steps below.
-2. Read the file `pr/human.md` in the current directory.
+2. Read the file `{human_file}`.
 3. Post the review content as a PR comment using:
-   `gh pr comment {pr_number} --repo {owner}/{repo} --body-file pr/human.md`
+   `gh pr comment {pr_number} --repo {owner}/{repo} --body-file {human_file_q}`
 4. Request changes on the PR using:
    `gh pr review {pr_number} --repo {owner}/{repo} --request-changes`
 5. Confirm to the user that the review was posted and changes were requested.
 """
 
-    with open(claude_dir / "send-decline.md", 'w') as f:
-        f.write(send_decline_cmd)
+    show_cmd = f"""Open the PR review directory in your IDE for human review.
 
-    # /show command - open in VS Code AND write the .human_reviewed sentinel
-    show_cmd = """Open the PR review directory in your IDE for human review.
-
-This step is mandatory. /send and /send-decline are gated on the
-`.human_reviewed` sentinel that this command writes - they will refuse to post
-anything until you have run /show.
+This step is mandatory. {send_command} and {send_decline_command} are gated on
+the `.human_reviewed` sentinel that this command writes - they will refuse to
+post anything until you have run {show_command}.
 
 Steps:
-1. Run `code .` to open the current directory in VS Code (or whichever editor
+1. Run `code {pr_review_dir_q} {review_file_q} {human_file_q} {inline_file_q}` to
+   open the review directory and review files in VS Code (or whichever editor
    the user prefers - the goal is that a human actually looks at the review).
-2. Write a sentinel file `.human_reviewed` in the current directory containing:
+2. Write a sentinel file `{sentinel_file}` containing:
    - The line `Reviewed by human at <ISO 8601 timestamp>` using the current time.
-   - The line `Files opened: pr/review.md, pr/human.md, pr/inline.md`.
+   - The line `Files opened: {review_file}, {human_file}, {inline_file}`.
 3. Tell the user:
-   - The review files are now open: pr/review.md, pr/human.md, pr/inline.md.
-   - They should read pr/human.md (this is what gets posted) and edit anything
+   - The review files are now open: {review_file}, {human_file}, {inline_file}.
+   - They should read {human_file} (this is what gets posted) and edit anything
      that doesn't sound like them.
    - When they are satisfied that the review represents their own judgement,
-     they can run /send (approve) or /send-decline (request changes).
+     they can run {send_command} (approve) or {send_decline_command} (request changes).
 """
 
-    with open(claude_dir / "show.md", 'w') as f:
-        f.write(show_cmd)
+    return {
+        "show": show_cmd,
+        "send": send_cmd,
+        "send-decline": send_decline_cmd,
+    }
+
+
+def write_claude_commands(
+    claude_dir: Path,
+    command_contents: Dict[str, str],
+    command_filenames: Dict[str, str],
+) -> None:
+    """Write command content into a .claude/commands directory."""
+    claude_dir.mkdir(parents=True, exist_ok=True)
+
+    for command_key, filename in command_filenames.items():
+        with open(claude_dir / filename, 'w') as f:
+            f.write(command_contents[command_key])
+
+
+def generate_claude_commands(
+    pr_review_dir: Path,
+    metadata: Dict[str, Any],
+    project_dir: Optional[Path] = None,
+):
+    """Generate .claude directory with custom slash commands."""
+    pr_number = str(metadata.get('number', '123'))
+
+    claude_dir = pr_review_dir / ".claude" / "commands"
+    command_contents = build_claude_command_contents(
+        pr_review_dir,
+        metadata,
+        show_command="/show",
+        send_command="/send",
+        send_decline_command="/send-decline",
+    )
+    write_claude_commands(
+        claude_dir,
+        command_contents,
+        {
+            "show": "show.md",
+            "send": "send.md",
+            "send-decline": "send-decline.md",
+        },
+    )
 
     print(f"✅ Created slash commands in {claude_dir}")
     print("   - /show (MANDATORY - open in IDE, writes .human_reviewed sentinel)")
     print("   - /send (approve and post; refuses without sentinel)")
     print("   - /send-decline (request changes and post; refuses without sentinel)")
+
+    if project_dir:
+        project_claude_dir = project_dir / ".claude" / "commands"
+        project_command_contents = build_claude_command_contents(
+            pr_review_dir,
+            metadata,
+            show_command=f"/pr-{pr_number}-show",
+            send_command=f"/pr-{pr_number}-send",
+            send_decline_command=f"/pr-{pr_number}-send-decline",
+        )
+        write_claude_commands(
+            project_claude_dir,
+            project_command_contents,
+            {
+                "show": f"pr-{pr_number}-show.md",
+                "send": f"pr-{pr_number}-send.md",
+                "send-decline": f"pr-{pr_number}-send-decline.md",
+            },
+        )
+
+        print(f"✅ Created project slash commands in {project_claude_dir}")
+        print(f"   - /pr-{pr_number}-show (MANDATORY - open in IDE, writes .human_reviewed sentinel)")
+        print(f"   - /pr-{pr_number}-send (approve and post; refuses without sentinel)")
+        print(f"   - /pr-{pr_number}-send-decline (request changes and post; refuses without sentinel)")
+
+
+def generate_review_ready_summary(
+    pr_review_dir: Path,
+    metadata: Dict[str, Any],
+    project_dir: Optional[Path] = None,
+) -> str:
+    """Generate REVIEW_READY.txt content."""
+    pr_number = str(metadata.get('number', '123'))
+
+    if project_dir:
+        command_section = f"""Slash commands from the project directory (run in this order):
+1. /pr-{pr_number}-show           - MANDATORY: open the review in your IDE so a human (you)
+                                    actually reads it. Writes a `.human_reviewed` sentinel.
+2. /pr-{pr_number}-send           - Post human.md and approve PR (refuses without sentinel)
+   /pr-{pr_number}-send-decline   - Post human.md and request changes (refuses without sentinel)
+
+Legacy slash commands from the review directory:
+- /show
+- /send
+- /send-decline
+"""
+        next_steps = f"""Next steps:
+1. From {project_dir}, run /pr-{pr_number}-show. Read {pr_review_dir / "pr" / "human.md"} -
+   this is what will be posted under your name. Edit anything that doesn't sound like you.
+2. When you're satisfied, run /pr-{pr_number}-send or /pr-{pr_number}-send-decline.
+"""
+        important = (
+            f"IMPORTANT: Nothing will be posted until you run /pr-{pr_number}-show, "
+            f"then /pr-{pr_number}-send or /pr-{pr_number}-send-decline."
+        )
+    else:
+        command_section = """Slash commands (run in this order):
+1. /show           - MANDATORY: open the review in your IDE so a human (you)
+                     actually reads it. Writes a `.human_reviewed` sentinel.
+2. /send           - Post human.md and approve PR (refuses without sentinel)
+   /send-decline   - Post human.md and request changes (refuses without sentinel)
+"""
+        next_steps = """Next steps:
+1. Run /show. Read pr/human.md - this is what will be posted under your name.
+   Edit anything that doesn't sound like you.
+2. When you're satisfied, run /send or /send-decline.
+"""
+        important = "IMPORTANT: Nothing will be posted until you run /show, then /send or /send-decline."
+
+    return f"""PR Review Files Generated
+========================
+
+Directory: {pr_review_dir}
+
+Files created:
+- pr/review.md      - Detailed analysis for your review
+- pr/human.md       - Clean version for posting (no emojis, no line numbers)
+- pr/inline.md      - Proposed inline comments with code snippets
+
+{command_section}
+Why the show command is mandatory:
+   If a human is named as the reviewer, they should actually look at the code.
+   The send commands will refuse to post anything until the show command has
+   run. This makes the human-in-the-loop step explicit instead of optional.
+
+{next_steps}
+{important}
+"""
 
 
 def main():
@@ -435,6 +587,10 @@ def main():
     parser.add_argument('pr_review_dir', help='PR review directory path')
     parser.add_argument('--findings', required=True, help='JSON file with review findings')
     parser.add_argument('--metadata', help='JSON file with PR metadata (optional)')
+    parser.add_argument(
+        '--project-dir',
+        help='Project root where PR-specific slash commands should be deployed (optional)'
+    )
 
     args = parser.parse_args()
 
@@ -452,8 +608,15 @@ def main():
         if not metadata:
             metadata = findings.get('metadata', {})
 
+        # Resolve directories
+        pr_review_dir = Path(args.pr_review_dir).expanduser().resolve()
+        project_dir = None
+        if args.project_dir:
+            project_dir = Path(args.project_dir).expanduser().resolve()
+            if not project_dir.is_dir():
+                raise ValueError(f"--project-dir must exist and be a directory: {project_dir}")
+
         # Create pr directory
-        pr_review_dir = Path(args.pr_review_dir)
         pr_dir = create_pr_directory(pr_review_dir)
 
         print(f"📝 Generating review files in {pr_dir}...")
@@ -480,38 +643,10 @@ def main():
         print(f"✅ Created inline comments: {inline_file}")
 
         # Generate Claude slash commands
-        generate_claude_commands(pr_review_dir, metadata)
+        generate_claude_commands(pr_review_dir, metadata, project_dir)
 
         # Create summary file
-        summary = f"""PR Review Files Generated
-========================
-
-Directory: {pr_review_dir}
-
-Files created:
-- pr/review.md      - Detailed analysis for your review
-- pr/human.md       - Clean version for posting (no emojis, no line numbers)
-- pr/inline.md      - Proposed inline comments with code snippets
-
-Slash commands (run in this order):
-1. /show           - MANDATORY: open the review in your IDE so a human (you)
-                     actually reads it. Writes a `.human_reviewed` sentinel.
-2. /send           - Post human.md and approve PR (refuses without sentinel)
-   /send-decline   - Post human.md and request changes (refuses without sentinel)
-
-Why /show is mandatory:
-   If a human is named as the reviewer, they should actually look at the code.
-   /send and /send-decline will refuse to post anything until /show has been
-   run. This makes the human-in-the-loop step explicit instead of optional.
-
-Next steps:
-1. Run /show. Read pr/human.md - this is what will be posted under your name.
-   Edit anything that doesn't sound like you.
-2. When you're satisfied, run /send or /send-decline.
-
-IMPORTANT: Nothing will be posted until you run /show, then /send or
-/send-decline.
-"""
+        summary = generate_review_ready_summary(pr_review_dir, metadata, project_dir)
 
         summary_file = pr_review_dir / "REVIEW_READY.txt"
         with open(summary_file, 'w') as f:

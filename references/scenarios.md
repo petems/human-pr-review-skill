@@ -12,9 +12,10 @@ Detailed workflows for specific review use cases.
 3. Scan `diff.patch` for obvious issues
 4. Apply critical criteria (security, bugs, tests)
 5. Create findings JSON with analysis
-6. Run `generate_review_files.py` to create review files
+6. Run `generate_review_files.py --project-dir <project-root>` to create review files
 7. Direct user to review `pr/review.md` and `pr/human.md`
-8. Remind user to use `/show` to edit, then `/send` or `/send-decline`
+8. Remind user to use `/pr-<number>-show` to edit, then `/pr-<number>-send`
+   or `/pr-<number>-send-decline`
 
 ## Scenario 2: Thorough Review with Inline Comments
 
@@ -26,13 +27,13 @@ Detailed workflows for specific review use cases.
 3. Apply full `review_criteria.md` checklist
 4. Identify critical issues, important issues, and nits
 5. Create findings JSON with `inline_comments` array
-6. Run `generate_review_files.py` to create all files
+6. Run `generate_review_files.py --project-dir <project-root>` to create all files
 7. Direct user to:
    - Review `pr/review.md` for detailed analysis
    - Edit `pr/human.md` if needed
    - Check `pr/inline.md` for proposed comments
-   - Use `/show` to open in VS Code
-   - Use `/send` or `/send-decline` when ready
+   - Use `/pr-<number>-show` to open in VS Code
+   - Use `/pr-<number>-send` or `/pr-<number>-send-decline` when ready
    - Optionally post inline comments from `pr/inline.md`
 
 ## Scenario 3: Security-Focused Review

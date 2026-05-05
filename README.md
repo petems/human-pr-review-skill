@@ -16,27 +16,28 @@ with the communication-focused patterns from
 folded in.
 
 **My personal take**: PR review should have a human touch. If a person is
-named as the reviewer, they should actually look at the code. Otherwise it's
-just agents reviewing agents in an ouroboros, and at that point why is a
-person assigned at all? The mandatory `/show` step exists to make that
-explicit - you cannot post a review under your name until you've opened it
-in your IDE and looked at it.
+named as the reviewer, they should actually look at the code. Otherwise the
+human byline stops meaning much. The mandatory `/pr-<number>-show` step exists
+to make that explicit - you cannot post a review under your name until you've
+opened it in your IDE and looked at it.
 
 ## Overview
 
 This is a Claude Code skill that does the boring half of code review for you
 - fetching the PR diff, comments, commits and linked issues, and scaffolding
 the review files - while keeping the judgement step in human hands. The
-`/show` slash command is mandatory: it writes a `.human_reviewed` sentinel,
-and `/send` / `/send-decline` will refuse to post anything until that
-sentinel exists.
+`/pr-<number>-show` slash command is mandatory when commands are deployed to
+the project directory: it writes a `.human_reviewed` sentinel, and
+`/pr-<number>-send` / `/pr-<number>-send-decline` will refuse to post anything
+until that sentinel exists. Legacy `/show`, `/send`, and `/send-decline`
+commands are still generated in the temporary review directory.
 
 ## Features
 
 - **Automated Data Collection** - Fetches PR metadata, diffs, comments, commits, and related issues via GitHub CLI
 - **Systematic Analysis** - Reviews against comprehensive criteria: security, testing, maintainability, performance
 - **Structured Review Files** - Generates detailed internal review, clean public review, and inline comment templates
-- **Mandatory `/show` Gate** - `/send` and `/send-decline` refuse to post until you've opened the review in your IDE. No more drive-by approvals.
+- **Mandatory Review Gate** - `/pr-<number>-send` and `/pr-<number>-send-decline` refuse to post until you've opened the review in your IDE. No more drive-by approvals.
 - **Communication Patterns Built In** - Severity tags (`[blocking]`, `[important]`, `[nit]`, `[suggestion]`, `[learning]`, `[question]`, `[praise]`), question approach, and suggest-don't-command phrasing baked into the templates
 - **Inline Comments** - Adds specific feedback directly to code lines with posting commands
 - **Ticket Tracking** - Extracts and links JIRA/GitHub issue references
@@ -85,9 +86,9 @@ Minimal marketplace shape:
   "plugins": [
     {
       "name": "human-pr-reviewer",
-      "description": "Drafts GitHub PR reviews while requiring a human /show step before posting.",
+      "description": "Drafts GitHub PR reviews while requiring a human /pr-<number>-show step before posting.",
       "version": "2.0.0",
-      "source": ".",
+      "source": "./",
       "category": "productivity"
     }
   ]
@@ -143,7 +144,8 @@ bundled `references/` and `scripts/` resources.
 Keep install metadata separate from skill instructions:
 
 - `.claude-plugin/marketplace.json` belongs at the marketplace root.
-- `.claude-plugin/plugin.json` belongs at the plugin root.
+- `.claude-plugin/plugin.json` belongs at the plugin root and declares
+  `"skills": "./"` so Claude Code loads the root-level `SKILL.md`.
 - `SKILL.md` is the skill entrypoint for this single-skill repository.
 - `references/` is for detailed material the agent should read only when
   needed, such as review criteria, scenarios, and troubleshooting.
@@ -170,21 +172,21 @@ Keep install metadata separate from skill instructions:
 
 3. **Generate review files** with your findings:
    ```bash
-   python scripts/generate_review_files.py /tmp/PRs/<repo-name>/123 --findings findings.json
+   python scripts/generate_review_files.py /tmp/PRs/<repo-name>/123 --findings findings.json --project-dir /path/to/project
    ```
 
 4. **MANDATORY: open the review in your IDE**:
    ```bash
-   /show  # Opens review directory in VS Code, writes .human_reviewed sentinel
+   /pr-123-show  # Opens review files in VS Code, writes .human_reviewed sentinel
    ```
    Read `pr/human.md` - that's what gets posted under your name. Edit anything
    that doesn't sound like you.
 
 5. **Approve and post** (refuses to run unless step 4 was done):
    ```bash
-   /send          # Approve PR and post review
+   /pr-123-send          # Approve PR and post review
    # or
-   /send-decline  # Request changes and post review
+   /pr-123-send-decline  # Request changes and post review
    ```
 
 ## Workflow
@@ -206,13 +208,14 @@ Keep install metadata separate from skill instructions:
 ┌─────────────────────────────────────────────────────────────────┐
 │ 3. Generate Review Files                                        │
 │    python scripts/generate_review_files.py <dir> --findings ... │
+│      --project-dir <project-root>                              │
 │    → Creates review.md, human.md, inline.md                    │
-│    → Generates /show, /send, /send-decline commands            │
+│    → Generates /pr-<number>-show, /pr-<number>-send commands   │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. MANDATORY: Human Review (/show)                              │
-│    /show → Opens in VS Code, writes .human_reviewed sentinel    │
+│ 4. MANDATORY: Human Review (/pr-<number>-show)                  │
+│    /pr-<number>-show → Opens files, writes sentinel             │
 │    → Read pr/human.md (this gets posted under your name)        │
 │    → Edit anything that doesn't sound like you                  │
 │    → Review pr/inline.md for proposed comments                  │
@@ -220,7 +223,7 @@ Keep install metadata separate from skill instructions:
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │ 5. Approve & Post (gated on the sentinel)                       │
-│    /send (approve) or /send-decline (request changes)           │
+│    /pr-<number>-send or /pr-<number>-send-decline               │
 │    → Refuses to run unless .human_reviewed exists               │
 │    → Posts pr/human.md as review comment                        │
 │    → Optionally post inline comments from pr/inline.md          │
@@ -299,16 +302,24 @@ Options:
 Generates structured review documents from analysis findings.
 
 ```bash
-python scripts/generate_review_files.py <pr_review_dir> --findings <findings_json> [--metadata <metadata_json>]
+python scripts/generate_review_files.py <pr_review_dir> --findings <findings_json> [--metadata <metadata_json>] [--project-dir <project_root>]
 ```
 
 **Creates**:
 - `pr/review.md` - Detailed internal review with emojis and line numbers
 - `pr/human.md` - Clean review for posting (no emojis, em-dashes, line numbers)
 - `pr/inline.md` - Proposed inline comments with posting commands
-- `.claude/commands/send.md` - Slash command to approve and post
-- `.claude/commands/send-decline.md` - Slash command to request changes
-- `.claude/commands/show.md` - Slash command to open in VS Code
+- `<project_root>/.claude/commands/pr-<number>-show.md` - Project slash command
+  to open review files and write the sentinel
+- `<project_root>/.claude/commands/pr-<number>-send.md` - Project slash command
+  to approve and post
+- `<project_root>/.claude/commands/pr-<number>-send-decline.md` - Project slash
+  command to request changes
+- `<pr_review_dir>/.claude/commands/show.md`, `send.md`, and `send-decline.md`
+  - Legacy tmpdir commands for the same workflow
+
+PR-specific command names keep multiple active reviews from overwriting each
+other in the project command namespace.
 
 **Example findings JSON**:
 ```json
@@ -400,7 +411,7 @@ Claude Code:
 5. Creates findings JSON with analysis
 6. Runs generate_review_files.py to create review files
 7. Tells you to review pr/review.md and pr/human.md
-8. Reminds you to use /show to edit, then /send or /send-decline
+8. Reminds you to use /pr-28476-show to edit, then /pr-28476-send or /pr-28476-send-decline
 ```
 
 ### Example 2: Comprehensive Review with Inline Comments
@@ -414,7 +425,7 @@ Claude Code:
 3. Identifies blockers, important issues, and nits
 4. Creates findings JSON with detailed inline_comments array
 5. Generates all review files (review.md, human.md, inline.md)
-6. Provides /show, /send, /send-decline commands
+6. Provides /pr-<number>-show, /pr-<number>-send, and /pr-<number>-send-decline commands
 7. You review, edit, approve, and optionally post inline comments
 ```
 
