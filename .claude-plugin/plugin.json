@@ -1,7 +1,8 @@
 {
   "name": "human-pr-reviewer",
   "version": "2.0.0",
-  "description": "Draft GitHub PR reviews while requiring a human /show step before posting.",
+  "description": "Draft GitHub PR reviews while requiring a human /pr-<number>-show step before posting.",
+  "skills": "./",
   "author": {
     "name": "Peter Souter"
   },

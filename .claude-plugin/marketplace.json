@@ -9,9 +9,9 @@
   "plugins": [
     {
       "name": "human-pr-reviewer",
-      "description": "Drafts GitHub PR reviews while requiring a human /show step before posting.",
+      "description": "Drafts GitHub PR reviews while requiring a human /pr-<number>-show step before posting.",
       "version": "2.0.0",
-      "source": ".",
+      "source": "./",
       "category": "productivity"
     }
   ]
